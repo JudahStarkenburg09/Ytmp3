@@ -31,7 +31,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         
@@ -42,7 +42,7 @@ jobs:
         java-version: '17'
         
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -50,7 +50,7 @@ jobs:
           ${{ runner.os }}-pip-
           
     - name: Cache buildozer global directory
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.buildozer
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
@@ -58,7 +58,7 @@ jobs:
           ${{ runner.os }}-buildozer-
           
     - name: Cache buildozer directory
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .buildozer
         key: ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}
@@ -151,7 +151,7 @@ jobs:
         echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
         
     - name: Upload APK artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ytmp3-converter-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
         path: ${{ steps.find_apk.outputs.apk_path }}
@@ -159,7 +159,7 @@ jobs:
         
     - name: Create Release
       if: ${{ github.event.inputs.create_release == 'true' }}
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ github.event.inputs.version_name || github.run_number }}
         name: YTmp3 Converter v${{ github.event.inputs.version_name || github.run_number }}
@@ -190,7 +190,7 @@ jobs:
         
     - name: Upload to artifacts (backup)
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-logs-${{ github.sha }}
         path: |
