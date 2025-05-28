@@ -1,10 +1,6 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       build_type:
@@ -15,6 +11,16 @@ on:
         options:
         - debug
         - release
+      create_release:
+        description: 'Create GitHub Release'
+        required: true
+        default: false
+        type: boolean
+      version_name:
+        description: 'Version name (e.g., 1.0.0)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build-android:
@@ -152,17 +158,18 @@ jobs:
         retention-days: 30
         
     - name: Create Release
-      if: github.ref == 'refs/heads/main' && (github.event.inputs.build_type == 'release' || github.event_name == 'push')
+      if: ${{ github.event.inputs.create_release == 'true' }}
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ github.run_number }}
-        name: YTmp3 Converter v${{ github.run_number }}
+        tag_name: v${{ github.event.inputs.version_name || github.run_number }}
+        name: YTmp3 Converter v${{ github.event.inputs.version_name || github.run_number }}
         body: |
           ## YTmp3 Converter Release
           
-          ### Changes
-          - Built from commit: ${{ github.sha }}
-          - Build type: ${{ github.event.inputs.build_type || 'debug' }}
+          ### Build Information
+          - Build type: ${{ github.event.inputs.build_type }}
+          - Build number: ${{ github.run_number }}
+          - Triggered by: ${{ github.actor }}
           
           ### Installation
           1. Download the APK file
