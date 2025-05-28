@@ -1,1 +1,193 @@
 
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+        - debug
+        - release
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Cache buildozer global directory
+      uses: actions/cache@v3
+      with:
+        path: ~/.buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+          
+    - name: Cache buildozer directory
+      uses: actions/cache@v3
+      with:
+        path: .buildozer
+        key: ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-local-
+          
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          build-essential \
+          libltdl-dev \
+          wget \
+          curl \
+          lbzip2 \
+          python3-distutils
+          
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer cython==0.29.33
+        pip install kivy[base] kivymd
+        
+    - name: Create requirements.txt
+      run: |
+        echo "kivy==2.1.0" > requirements.txt
+        echo "yt-dlp" >> requirements.txt
+        echo "certifi" >> requirements.txt
+        echo "urllib3" >> requirements.txt
+        echo "requests" >> requirements.txt
+        echo "pycryptodome" >> requirements.txt
+        echo "websockets" >> requirements.txt
+        echo "brotli" >> requirements.txt
+        echo "mutagen" >> requirements.txt
+        
+    - name: Set up Android SDK environment
+      run: |
+        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+        echo "PATH=$PATH:$HOME/android-sdk/tools:$HOME/android-sdk/platform-tools" >> $GITHUB_ENV
+        
+    - name: Accept Android SDK licenses
+      run: |
+        mkdir -p $HOME/android-sdk/licenses
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/android-sdk/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/android-sdk/licenses/android-sdk-license
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $HOME/android-sdk/licenses/android-sdk-license
+        
+    - name: Initialize buildozer
+      run: |
+        buildozer init || true
+        
+    - name: Build debug APK
+      if: github.event.inputs.build_type != 'release'
+      run: |
+        buildozer android debug
+        
+    - name: Build release APK
+      if: github.event.inputs.build_type == 'release'
+      env:
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      run: |
+        buildozer android release
+        
+    - name: Find APK files
+      id: find_apk
+      run: |
+        if [ "${{ github.event.inputs.build_type }}" == "release" ]; then
+          APK_PATH=$(find bin -name "*.apk" -type f | grep -E "(release|signed)" | head -1)
+        else
+          APK_PATH=$(find bin -name "*.apk" -type f | head -1)
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+        echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
+        
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ytmp3-converter-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
+        path: ${{ steps.find_apk.outputs.apk_path }}
+        retention-days: 30
+        
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' && (github.event.inputs.build_type == 'release' || github.event_name == 'push')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: YTmp3 Converter v${{ github.run_number }}
+        body: |
+          ## YTmp3 Converter Release
+          
+          ### Changes
+          - Built from commit: ${{ github.sha }}
+          - Build type: ${{ github.event.inputs.build_type || 'debug' }}
+          
+          ### Installation
+          1. Download the APK file
+          2. Enable "Install from unknown sources" in Android settings
+          3. Install the APK
+          
+          ### Features
+          - YouTube to MP3 conversion
+          - Multiple quality options
+          - Mobile-optimized interface
+          - Progress tracking
+          
+        files: ${{ steps.find_apk.outputs.apk_path }}
+        draft: false
+        prerelease: ${{ github.event.inputs.build_type != 'release' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload to artifacts (backup)
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs-${{ github.sha }}
+        path: |
+          .buildozer/
+          *.log
+        retention-days: 7
